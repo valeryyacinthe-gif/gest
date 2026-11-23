@@ -8,7 +8,8 @@ export function validateFormulationInputs({ ingredients, requirements }) {
   if (!requirements?.length) errors.push('Aucun besoin nutritionnel documenté et validé pour cette espèce et ce stade.');
   for (const item of ingredients || []) {
     if (!(Number(item.price_per_kg) > 0)) errors.push(`Prix manquant ou nul pour ${item.name}.`);
-    if (item.safety_limit_required && !item.max_inclusion_verified) errors.push(`Limite de sécurité validée manquante pour ${item.name} : cet ingrédient ne peut pas entrer dans l’optimisation.`);\n    if (!(Number(item.max_inclusion ?? 100) >= Number(item.min_inclusion ?? 0))) errors.push(`Limites d’incorporation incohérentes pour ${item.name}.`);
+    if (item.safety_limit_required && !item.max_inclusion_verified) errors.push(`Limite de sécurité validée manquante pour ${item.name} : cet ingrédient ne peut pas entrer dans l’optimisation.`);
+    if (!(Number(item.max_inclusion ?? 100) >= Number(item.min_inclusion ?? 0))) errors.push(`Limites d’incorporation incohérentes pour ${item.name}.`);
     for (const req of requirements || []) {
       const profile = (item.nutrients || []).find(n => n.nutrient_code === req.nutrient_code && n.verified === true);
       if (!profile) errors.push(`Donnée vérifiée absente : ${req.nutrient_name} pour ${item.name}.`);
