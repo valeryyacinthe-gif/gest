@@ -4,12 +4,12 @@ import { optimizeLeastCost } from './lib/formulation';
 import './style.css';
 
 const species = [
-  { id: 'broiler', name: 'Poulets de chair', stages: ['Démarrage', 'Croissance', 'Finition'], icon: '🐔' },
-  { id: 'layers', name: 'Poules pondeuses commerciales', stages: ['Poulettes', 'Pré-ponte', 'Ponte'], icon: '🥚' },
-  { id: 'local_barred_layer', name: 'Poules locales barrées', stages: ['Ponte (19–65 semaines) – Hautes Terres de l’Ouest'], icon: '🐓' },
-  { id: 'pigs', name: 'Porcs', stages: ['Porcelet', 'Croissance', 'Finition', 'Truie'], icon: '🐖' },
-  { id: 'rabbits', name: 'Lapins', stages: ['Sevrage', 'Croissance', 'Reproduction'], icon: '🐇' },
-  { id: 'fish', name: 'Poissons', stages: ['Alevinage', 'Croissance', 'Finition'], icon: '🐟' }
+  { id: 'broiler', name: 'Poulets de chair', genotypes: ['Ross 308 (>3,5 kg cible)', 'Cobb 500', 'Hubbard Flex', 'Autre souche commerciale'], stages: ['Démarrage', 'Croissance', 'Finition 1', 'Finition 2', 'Finition 3'], icon: '🐔' },
+  { id: 'layers', name: 'Poules pondeuses commerciales', genotypes: ['Hy-Line Brown', 'ISA Brown', 'Lohmann Brown', 'Bovans Brown', 'Autre souche commerciale'], stages: ['Ponte pic', 'Ponte 2', 'Ponte 3', 'Ponte 4', 'Ponte 5'], icon: '🥚' },
+  { id: 'local_barred_layer', name: 'Poules locales barrées', genotypes: ['Poule barrée locale camerounaise'], stages: ['Ponte (19–65 semaines) – Hautes Terres de l’Ouest'], icon: '🐓' },
+  { id: 'local_chicken', name: 'Poulets locaux (chair)', genotypes: ['Poulet local non amélioré', 'Poulet local sélectionné / croisé'], stages: ['Démarrage', 'Croissance', 'Finition'], icon: '🐓' },
+  { id: 'pigs', name: 'Porcs', genotypes: ['Race locale camerounaise', 'Croisé amélioré (Large White × Landrace)', 'DanBred'], stages: ['6–9 kg', '9–15 kg', '15–30 kg', '30–60 kg', '60–110 kg', 'Cochette', 'Truie gestante', 'Truie allaitante'], icon: '🐖' },
+  { id: 'rabbits', name: 'Lapins', genotypes: ['Néo-Zélandais blanc', 'Californien', 'Croisé', 'Population locale'], stages: ['Croissance/engraissement', 'Entretien', 'Gestation', 'Lactation'], icon: '🐇' }
 ];
 const OFFLINE_KEY = 'feedform_offline_queue_v1';
 const CATALOG_KEY = 'feedform_catalog_cache_v1';
@@ -38,6 +38,8 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [detail, setDetail] = useState(null);
   const [animal, setAnimal] = useState('broiler');
+  const [genotype, setGenotype] = useState('Ross 308 (>3,5 kg cible)');
+  const [feedIntakeGDay, setFeedIntakeGDay] = useState('110');
   const [stage, setStage] = useState('Démarrage');
   const [batchKg, setBatchKg] = useState('100');
   const [selected, setSelected] = useState([]);
@@ -51,7 +53,7 @@ export default function App() {
   const selectedIngredients = useMemo(() => selected.map(id => {
     const item = ingredients.find(i => i.id === id);
     if (!item) return null;
-    const limit = limits.find(l => l.ingredient_id === id && l.species === animal && l.stage === stage && l.verified);
+    const limit = limits.find(l => l.ingredient_id === id && l.species === animal && l.stage === stage && (l.genotype === genotype || l.genotype === 'generic') && l.verified);
     return {
       ...item,
       price_per_kg: Number(priceDraft[id] ?? prices[id] ?? 0),
@@ -60,7 +62,7 @@ export default function App() {
       max_inclusion_verified: Boolean(limit),
       nutrients: nutrients.filter(n => n.ingredient_id === id),
     };
-  }).filter(Boolean), [selected, ingredients, limits, animal, stage, priceDraft, prices, capDraft, nutrients]);
+  }).filter(Boolean), [selected, ingredients, limits, animal, genotype, stage, priceDraft, prices, capDraft, nutrients]);
 
   const loadWorkspace = useCallback(async currentUser => {
     if (!supabase || !currentUser) return;
@@ -109,7 +111,8 @@ export default function App() {
     const remaining = [];
     for (const draft of queue) {
       const { data: formula, error } = await supabase.from('formulas').insert({
-        user_id: currentUser.id, title: draft.title, species: draft.species, stage: draft.stage,
+        user_id: currentUser.id, title: draft.title, species: draft.species, genotype: draft.genotype || 'generic', stage: draft.stage,
+        feed_intake_g_day: draft.feed_intake_g_day || null,
         batch_kg: draft.batch_kg, currency: 'XAF', total_cost: draft.total_cost,
         cost_per_kg: draft.cost_per_kg, solver_status: draft.solver_status,
         model_snapshot: draft.model_snapshot, notes: draft.notes || null
@@ -180,8 +183,16 @@ export default function App() {
   }
 
   async function runOptimizer() {
-    const verifiedRequirements = requirements.filter(r => r.species === animal && r.stage === stage && r.verified);
-    const output = await optimizeLeastCost({ ingredients: selectedIngredients, requirements: verifiedRequirements, batchKg: Number(batchKg) });
+    const verifiedRequirements = requirements.filter(r =>
+      r.species === animal && r.stage === stage && r.verified &&
+      (r.genotype === genotype || r.genotype === 'generic')
+    );
+    const output = await optimizeLeastCost({
+      ingredients: selectedIngredients,
+      requirements: verifiedRequirements,
+      batchKg: Number(batchKg),
+      feedIntakeGDay: animal === 'layers' ? Number(feedIntakeGDay) : null
+    });
     setResult(output);
     if (output.feasible) setNotice('Solution mathématique trouvée. Vérifiez les lots et les consignes du nutritionniste avant fabrication.');
     else setNotice('Optimisation bloquée : les données ou contraintes vérifiées sont encore incomplètes.');
@@ -200,7 +211,9 @@ export default function App() {
       nutrient_snapshot: item.nutrients ? Object.fromEntries(item.nutrients.map(n => [n.nutrient_code, { value: n.value, unit: n.unit, basis: n.basis, source: n.source_title }])) : (item.nutrient_snapshot || {})
     }));
     return {
-      title: formulaTitle.trim() || 'Formule sans titre', species: animal, stage, batch_kg: Number(batchKg || 100),
+      title: formulaTitle.trim() || 'Formule sans titre', species: animal, genotype, stage,
+      feed_intake_g_day: animal === 'layers' ? Number(feedIntakeGDay || 0) : null,
+      batch_kg: Number(batchKg || 100),
       total_cost: result?.feasible ? result.total_cost : null,
       cost_per_kg: result?.feasible ? result.cost_per_kg : null,
       solver_status: result?.feasible ? 'optimal' : (result?.status === 'infeasible' ? 'infeasible' : 'unverified'),
@@ -221,7 +234,8 @@ export default function App() {
     }
     setBusy(true);
     const { data: formula, error } = await supabase.from('formulas').insert({
-      user_id: session.user.id, title: draft.title, species: draft.species, stage: draft.stage, batch_kg: draft.batch_kg,
+      user_id: session.user.id, title: draft.title, species: draft.species, genotype: draft.genotype || 'generic', stage: draft.stage,
+      feed_intake_g_day: draft.feed_intake_g_day || null, batch_kg: draft.batch_kg,
       currency: 'XAF', total_cost: draft.total_cost, cost_per_kg: draft.cost_per_kg,
       solver_status: draft.solver_status, model_snapshot: draft.model_snapshot, notes: draft.notes
     }).select().single();
@@ -235,7 +249,9 @@ export default function App() {
   }
 
   const openFormula = formula => {
-    setAnimal(formula.species); setStage(formula.stage); setBatchKg(String(formula.batch_kg));
+    const savedSpecies = species.find(s => s.id === formula.species) || species[0];
+    setAnimal(formula.species); setGenotype(formula.genotype || savedSpecies.genotypes[0]); setStage(formula.stage);
+    setFeedIntakeGDay(String(formula.feed_intake_g_day || 110)); setBatchKg(String(formula.batch_kg));
     setFormulaTitle(formula.title); setResult(formula.model_snapshot?.feasible ? formula.model_snapshot : null);
     setPage('Formuler');
   };
@@ -273,13 +289,15 @@ export default function App() {
           </div>
           <section className="notice"><span>ⓘ</span><div><strong>Moteur prudent et documenté</strong><p>Le calcul au moindre coût n’utilise que des compositions et besoins nutritionnels marqués comme vérifiés, avec unités et bases compatibles. Les données non validées restent visibles mais ne sont pas utilisées dans l’optimisation.</p></div></section>
           <section className="section-head"><div><span className="eyebrow">ESPÈCES PRÉVUES</span><h2>Choisissez votre production</h2></div></section>
-          <div className="species-grid">{species.map(s => <button key={s.id} className="species-card" onClick={() => { setAnimal(s.id); setStage(s.stages[0]); setPage('Formuler'); }}><span>{s.icon}</span><strong>{s.name}</strong><small>{s.stages.length} stades</small></button>)}</div>
+          <div className="species-grid">{species.map(s => <button key={s.id} className="species-card" onClick={() => { setAnimal(s.id); setGenotype(s.genotypes[0]); setStage(s.stages[0]); setPage('Formuler'); }}><span>{s.icon}</span><strong>{s.name}</strong><small>{s.stages.length} stades</small></button>)}</div>
         </>}
         {page === 'Formuler' && <section className="panel wide-panel">
           <span className="eyebrow">OPTIMISATION AU MOINDRE COÛT</span><h2>Paramètres de formulation</h2>
           <div className="form-grid">
-            <label>Espèce<select value={animal} onChange={e => { const next = species.find(s => s.id === e.target.value); setAnimal(e.target.value); setStage(next.stages[0]); setResult(null); }}>{species.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+            <label>Espèce<select value={animal} onChange={e => { const next = species.find(s => s.id === e.target.value); setAnimal(e.target.value); setGenotype(next.genotypes[0]); setStage(next.stages[0]); setResult(null); }}>{species.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+            <label>Souche / type génétique<select value={genotype} onChange={e => { setGenotype(e.target.value); setResult(null); }}>{activeSpecies.genotypes.map(g => <option key={g} value={g}>{g}</option>)}</select></label>
             <label>Stade<select value={stage} onChange={e => { setStage(e.target.value); setResult(null); }}>{activeSpecies.stages.map(s => <option key={s}>{s}</option>)}</select></label>
+            {animal === 'layers' && <label>Ingestion réelle (g/oiseau/jour)<input type="number" min="30" max="250" step="1" value={feedIntakeGDay} onChange={e => { setFeedIntakeGDay(e.target.value); setResult(null); }}/></label>}
             <label>Quantité à produire (kg)<input type="number" min="1" step="1" value={batchKg} onChange={e => setBatchKg(e.target.value)}/></label>
           </div>
           <label>Nom de la formule<input value={formulaTitle} onChange={e => setFormulaTitle(e.target.value)} placeholder="Ex. Aliment croissance - lot 1"/></label>
@@ -306,7 +324,7 @@ export default function App() {
               <p className="tiny-note">{result.note}</p>
             </> : <ul className="error-list">{(result.errors || []).map((error, index) => <li key={index}>{error}</li>)}</ul>}
           </div>}
-          <p className="tiny-note">Les prix sont propres à votre compte. En mode expert, un plafond saisi manuellement ne remplace pas une limite de sécurité validée par une source.</p>
+          <p className="tiny-note">Les besoins des pondeuses sont exprimés par oiseau et par jour puis convertis en concentrations selon l’ingestion réelle saisie. Les références par souche ne sont pas interchangeables. Les prix sont propres à votre compte; un plafond manuel ne remplace jamais une limite de sécurité documentée.</p>
         </section>}
         {page === 'Ingrédients' && <section className="panel wide-panel">
           <span className="eyebrow">MATIÈRES PREMIÈRES RÉGIONALES</span><h2>Bibliothèque documentée</h2>
