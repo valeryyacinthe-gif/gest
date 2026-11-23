@@ -1,5 +1,3 @@
-import solver from 'javascript-lp-solver';
-
 const round = (n, digits = 5) => Number(Number(n).toFixed(digits));
 
 export function validateFormulationInputs({ ingredients, requirements }) {
@@ -24,7 +22,7 @@ export function validateFormulationInputs({ ingredients, requirements }) {
  * feed. Only verified nutrient analyses and verified requirement rows enter
  * the model. No default nutrient values are fabricated.
  */
-export function optimizeLeastCost({ ingredients, requirements, batchKg = 100 }) {
+export async function optimizeLeastCost({ ingredients, requirements, batchKg = 100 }) {
   const errors = validateFormulationInputs({ ingredients, requirements });
   if (errors.length) return { feasible: false, errors, status: 'blocked' };
   if (!(Number(batchKg) > 0)) return { feasible: false, errors: ['La taille du lot doit être supérieure à zéro.'], status: 'blocked' };
@@ -57,6 +55,7 @@ export function optimizeLeastCost({ ingredients, requirements, batchKg = 100 }) 
   });
 
   try {
+    const { default: solver } = await import('javascript-lp-solver');
     const result = solver.Solve({ optimize: 'cost', opType: 'min', constraints, variables, timeout: 5000 });
     if (!result.feasible || result.bounded === false) {
       return { feasible: false, status: 'infeasible', errors: ['Aucune combinaison ne respecte toutes les contraintes. Révisez les prix, les ingrédients ou les limites documentées.'] };
