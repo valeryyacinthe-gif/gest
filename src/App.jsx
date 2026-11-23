@@ -4,12 +4,12 @@ import { optimizeLeastCost } from './lib/formulation';
 import './style.css';
 
 const species = [
-  { id: 'broiler', name: 'Poulets de chair', stages: ['Démarrage', 'Croissance', 'Finition'], icon: '🐔' },
-  { id: 'layers', name: 'Poules pondeuses commerciales', stages: ['Poulettes', 'Pré-ponte', 'Ponte'], icon: '🥚' },
-  { id: 'local_barred_layer', name: 'Poules locales barrées', stages: ['Ponte (19–65 semaines) – Hautes Terres de l’Ouest'], icon: '🐓' },
-  { id: 'pigs', name: 'Porcs', stages: ['Porcelet', 'Croissance', 'Finition', 'Truie'], icon: '🐖' },
-  { id: 'rabbits', name: 'Lapins', stages: ['Sevrage', 'Croissance', 'Reproduction'], icon: '🐇' },
-  { id: 'fish', name: 'Poissons', stages: ['Alevinage', 'Croissance', 'Finition'], icon: '🐟' }
+  { id: 'broiler', name: 'Poulets de chair', genotypes: ['Ross 308 (>3,5 kg cible)', 'Cobb 500', 'Hubbard Flex', 'Autre souche commerciale'], stages: ['Démarrage', 'Croissance', 'Finition 1', 'Finition 2', 'Finition 3'], icon: '🐔' },
+  { id: 'layers', name: 'Poules pondeuses commerciales', genotypes: ['Hy-Line Brown', 'ISA Brown', 'Lohmann Brown', 'Bovans Brown', 'Autre souche commerciale'], stages: ['Ponte pic', 'Ponte 2', 'Ponte 3', 'Ponte 4', 'Ponte 5'], icon: '🥚' },
+  { id: 'local_barred_layer', name: 'Poules locales barrées', genotypes: ['Poule barrée locale camerounaise'], stages: ['Ponte (19–65 semaines) – Hautes Terres de l’Ouest'], icon: '🐓' },
+  { id: 'local_chicken', name: 'Poulets locaux (chair)', genotypes: ['Poulet local non amélioré', 'Poulet local sélectionné / croisé'], stages: ['Démarrage', 'Croissance', 'Finition'], icon: '🐓' },
+  { id: 'pigs', name: 'Porcs', genotypes: ['Race locale camerounaise', 'Croisé amélioré (Large White × Landrace)', 'DanBred'], stages: ['6–9 kg', '9–15 kg', '15–30 kg', '30–60 kg', '60–115 kg', '75–115 kg', 'Cochette', 'Truie gestante', 'Truie allaitante'], icon: '🐖' },
+  { id: 'rabbits', name: 'Lapins', genotypes: ['Néo-Zélandais blanc', 'Californien', 'Croisé', 'Population locale'], stages: ['Croissance/engraissement', 'Entretien', 'Gestation', 'Lactation'], icon: '🐇' }
 ];
 const OFFLINE_KEY = 'feedform_offline_queue_v1';
 const CATALOG_KEY = 'feedform_catalog_cache_v1';
@@ -38,6 +38,8 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [detail, setDetail] = useState(null);
   const [animal, setAnimal] = useState('broiler');
+  const [genotype, setGenotype] = useState('Ross 308 (>3,5 kg cible)');
+  const [feedIntakeGDay, setFeedIntakeGDay] = useState('110');
   const [stage, setStage] = useState('Démarrage');
   const [batchKg, setBatchKg] = useState('100');
   const [selected, setSelected] = useState([]);
@@ -51,7 +53,7 @@ export default function App() {
   const selectedIngredients = useMemo(() => selected.map(id => {
     const item = ingredients.find(i => i.id === id);
     if (!item) return null;
-    const limit = limits.find(l => l.ingredient_id === id && l.species === animal && l.stage === stage && l.verified);
+    const limit = limits.find(l => l.ingredient_id === id && l.species === animal && l.stage === stage && (l.genotype === genotype || l.genotype === 'generic') && l.verified);
     return {
       ...item,
       price_per_kg: Number(priceDraft[id] ?? prices[id] ?? 0),
@@ -60,7 +62,7 @@ export default function App() {
       max_inclusion_verified: Boolean(limit),
       nutrients: nutrients.filter(n => n.ingredient_id === id),
     };
-  }).filter(Boolean), [selected, ingredients, limits, animal, stage, priceDraft, prices, capDraft, nutrients]);
+  }).filter(Boolean), [selected, ingredients, limits, animal, genotype, stage, priceDraft, prices, capDraft, nutrients]);
 
   const loadWorkspace = useCallback(async currentUser => {
     if (!supabase || !currentUser) return;
@@ -109,7 +111,8 @@ export default function App() {
     const remaining = [];
     for (const draft of queue) {
       const { data: formula, error } = await supabase.from('formulas').insert({
-        user_id: currentUser.id, title: draft.title, species: draft.species, stage: draft.stage,
+        user_id: currentUser.id, title: draft.title, species: draft.species, genotype: draft.genotype || 'generic', stage: draft.stage,
+        feed_intake_g_day: draft.feed_intake_g_day || null,
         batch_kg: draft.batch_kg, currency: 'XAF', total_cost: draft.total_cost,
         cost_per_kg: draft.cost_per_kg, solver_status: draft.solver_status,
         model_snapshot: draft.model_snapshot, notes: draft.notes || null
@@ -180,8 +183,16 @@ export default function App() {
   }
 
   async function runOptimizer() {
-    const verifiedRequirements = requirements.filter(r => r.species === animal && r.stage === stage && r.verified);
-    const output = await optimizeLeastCost({ ingredients: selectedIngredients, requirements: verifiedRequirements, batchKg: Number(batchKg) });
+    const verifiedRequirements = requirements.filter(r =>
+      r.species === animal && r.stage === stage && r.verified &&
+      (r.genotype === genotype || r.genotype === 'generic')
+    );
+    const output = await optimizeLeastCost({
+      ingredients: selectedIngredients,
+      requirements: verifiedRequirements,
+      batchKg: Number(batchKg),
+      feedIntakeGDay: animal === 'layers' ? Number(feedIntakeGDay) : null
+    });
     setResult(output);
     if (output.feasible) setNotice('Solution mathématique trouvée. Vérifiez les lots et les consignes du nutritionniste avant fabrication.');
     else setNotice('Optimisation bloquée : les données ou contraintes vérifiées sont encore incomplètes.');
@@ -200,7 +211,9 @@ export default function App() {
       nutrient_snapshot: item.nutrients ? Object.fromEntries(item.nutrients.map(n => [n.nutrient_code, { value: n.value, unit: n.unit, basis: n.basis, source: n.source_title }])) : (item.nutrient_snapshot || {})
     }));
     return {
-      title: formulaTitle.trim() || 'Formule sans titre', species: animal, stage, batch_kg: Number(batchKg || 100),
+      title: formulaTitle.trim() || 'Formule sans titre', species: animal, genotype, stage,
+      feed_intake_g_day: animal === 'layers' ? Number(feedIntakeGDay || 0) : null,
+      batch_kg: Number(batchKg || 100),
       total_cost: result?.feasible ? result.total_cost : null,
       cost_per_kg: result?.feasible ? result.cost_per_kg : null,
       solver_status: result?.feasible ? 'optimal' : (result?.status === 'infeasible' ? 'infeasible' : 'unverified'),
@@ -221,7 +234,8 @@ export default function App() {
     }
     setBusy(true);
     const { data: formula, error } = await supabase.from('formulas').insert({
-      user_id: session.user.id, title: draft.title, species: draft.species, stage: draft.stage, batch_kg: draft.batch_kg,
+      user_id: session.user.id, title: draft.title, species: draft.species, genotype: draft.genotype || 'generic', stage: draft.stage,
+      feed_intake_g_day: draft.feed_intake_g_day || null, batch_kg: draft.batch_kg,
       currency: 'XAF', total_cost: draft.total_cost, cost_per_kg: draft.cost_per_kg,
       solver_status: draft.solver_status, model_snapshot: draft.model_snapshot, notes: draft.notes
     }).select().single();
@@ -235,7 +249,9 @@ export default function App() {
   }
 
   const openFormula = formula => {
-    setAnimal(formula.species); setStage(formula.stage); setBatchKg(String(formula.batch_kg));
+    const savedSpecies = species.find(s => s.id === formula.species) || species[0];
+    setAnimal(formula.species); setGenotype(formula.genotype || savedSpecies.genotypes[0]); setStage(formula.stage);
+    setFeedIntakeGDay(String(formula.feed_intake_g_day || 110)); setBatchKg(String(formula.batch_kg));
     setFormulaTitle(formula.title); setResult(formula.model_snapshot?.feasible ? formula.model_snapshot : null);
     setPage('Formuler');
   };
@@ -273,25 +289,28 @@ export default function App() {
           </div>
           <section className="notice"><span>ⓘ</span><div><strong>Moteur prudent et documenté</strong><p>Le calcul au moindre coût n’utilise que des compositions et besoins nutritionnels marqués comme vérifiés, avec unités et bases compatibles. Les données non validées restent visibles mais ne sont pas utilisées dans l’optimisation.</p></div></section>
           <section className="section-head"><div><span className="eyebrow">ESPÈCES PRÉVUES</span><h2>Choisissez votre production</h2></div></section>
-          <div className="species-grid">{species.map(s => <button key={s.id} className="species-card" onClick={() => { setAnimal(s.id); setStage(s.stages[0]); setPage('Formuler'); }}><span>{s.icon}</span><strong>{s.name}</strong><small>{s.stages.length} stades</small></button>)}</div>
+          <div className="species-grid">{species.map(s => <button key={s.id} className="species-card" onClick={() => { setAnimal(s.id); setGenotype(s.genotypes[0]); setStage(s.stages[0]); setPage('Formuler'); }}><span>{s.icon}</span><strong>{s.name}</strong><small>{s.stages.length} stades</small></button>)}</div>
         </>}
         {page === 'Formuler' && <section className="panel wide-panel">
           <span className="eyebrow">OPTIMISATION AU MOINDRE COÛT</span><h2>Paramètres de formulation</h2>
           <div className="form-grid">
-            <label>Espèce<select value={animal} onChange={e => { const next = species.find(s => s.id === e.target.value); setAnimal(e.target.value); setStage(next.stages[0]); setResult(null); }}>{species.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+            <label>Espèce<select value={animal} onChange={e => { const next = species.find(s => s.id === e.target.value); setAnimal(e.target.value); setGenotype(next.genotypes[0]); setStage(next.stages[0]); setResult(null); }}>{species.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+            <label>Souche / type génétique<select value={genotype} onChange={e => { setGenotype(e.target.value); setResult(null); }}>{activeSpecies.genotypes.map(g => <option key={g} value={g}>{g}</option>)}</select></label>
             <label>Stade<select value={stage} onChange={e => { setStage(e.target.value); setResult(null); }}>{activeSpecies.stages.map(s => <option key={s}>{s}</option>)}</select></label>
+            {animal === 'layers' && <label>Ingestion réelle (g/oiseau/jour)<input type="number" min="30" max="250" step="1" value={feedIntakeGDay} onChange={e => { setFeedIntakeGDay(e.target.value); setResult(null); }}/></label>}
             <label>Quantité à produire (kg)<input type="number" min="1" step="1" value={batchKg} onChange={e => setBatchKg(e.target.value)}/></label>
           </div>
           <label>Nom de la formule<input value={formulaTitle} onChange={e => setFormulaTitle(e.target.value)} placeholder="Ex. Aliment croissance - lot 1"/></label>
           <div className="section-head compact"><div><span className="eyebrow">MATIÈRES PREMIÈRES</span><h3>Choisissez les ingrédients disponibles</h3></div><span className="muted">{selected.length} sélectionné(s)</span></div>
           {ingredients.length === 0 ? <p className="muted">Chargement de la bibliothèque… Si la liste reste vide, vérifiez la connexion.</p> : <div className="ingredient-picker">{ingredients.map(item => {
             const checked = selected.includes(item.id);
-            const limit = limits.find(l => l.ingredient_id === item.id && l.species === animal && l.stage === stage);
+            const limit = limits.find(l => l.ingredient_id === item.id && l.species === animal && l.stage === stage && (l.genotype === genotype || l.genotype === 'generic'));
             return <div className={'picker-row ' + (checked ? 'chosen' : '')} key={item.id}>
               <label className="picker-check"><input type="checkbox" checked={checked} onChange={() => { setSelected(v => checked ? v.filter(x => x !== item.id) : [...v, item.id]); setResult(null); }}/><span><strong>{item.name}</strong><small>{item.category}</small></span></label>
               {checked && <div className="picker-fields">
                 <label>Prix/kg (FCFA)<input type="number" min="0" value={priceDraft[item.id] ?? prices[item.id] ?? ''} onChange={e => setPriceDraft(v => ({ ...v, [item.id]: e.target.value }))} onBlur={e => savePrice(item.id, e.target.value)} placeholder="Prix local"/></label>
                 {mode === 'expert' && <label>Maximum (%)<input type="number" min="0" max="100" value={capDraft[item.id] ?? limit?.max_percent ?? ''} onChange={e => setCapDraft(v => ({ ...v, [item.id]: e.target.value }))} placeholder={limit ? 'Limite source' : 'Sans validation'}/></label>}
+                {limit && <small className="muted">Plafond documenté : {limit.max_percent}% · {limit.source_title}</small>}
                 {item.safety_limit_required && !limit && <small className="warning-text">Limite de sécurité non documentée pour ce stade</small>}
               </div>}
             </div>;
@@ -302,11 +321,11 @@ export default function App() {
             {result.feasible ? <>
               <div className="result-metrics"><div><small>Coût du lot</small><strong>{money(result.total_cost)}</strong></div><div><small>Coût par kg</small><strong>{money(result.cost_per_kg)}</strong></div></div>
               <div className="table-wrap"><table><thead><tr><th>Ingrédient</th><th>%</th><th>Quantité</th><th>Coût</th></tr></thead><tbody>{result.items.map(item => <tr key={item.ingredient_id}><td>{item.name}</td><td>{item.inclusion_percent.toFixed(2)}%</td><td>{item.quantity_kg.toFixed(2)} kg</td><td>{money(item.line_cost)}</td></tr>)}</tbody></table></div>
-              <h4>Contrôle des contraintes nutritionnelles</h4><ul className="constraint-list">{result.achieved.map(row => <li key={row.nutrient_code}><span>{row.nutrient_name}</span><strong>{row.value} {row.unit}</strong><small>Min. {row.min_value ?? '—'} · Max. {row.max_value ?? '—'} · {row.basis === 'dry_matter' ? 'MS' : 'brut'}</small></li>)}</ul>
+              <h4>Contrôle des contraintes nutritionnelles</h4><ul className="constraint-list">{result.achieved.map(row => <li key={row.nutrient_code}><span>{row.nutrient_name}</span><strong>{row.value} {row.unit}</strong><small>Min. {row.min_value ?? '—'} · Max. {row.max_value ?? '—'} · {row.basis === 'dry_matter' ? 'MS' : 'brut'}</small><small>Source : {row.source_title || 'Non renseignée'}</small>{row.original_daily_unit && <small>Besoin journalier source : {row.original_daily_min}–{row.original_daily_max} {row.original_daily_unit}</small>}</li>)}</ul>
               <p className="tiny-note">{result.note}</p>
             </> : <ul className="error-list">{(result.errors || []).map((error, index) => <li key={index}>{error}</li>)}</ul>}
           </div>}
-          <p className="tiny-note">Les prix sont propres à votre compte. En mode expert, un plafond saisi manuellement ne remplace pas une limite de sécurité validée par une source.</p>
+          <p className="tiny-note">Les besoins des pondeuses sont exprimés par oiseau et par jour puis convertis en concentrations selon l’ingestion réelle saisie. Les références par souche ne sont pas interchangeables. Les prix sont propres à votre compte; un plafond manuel ne remplace jamais une limite de sécurité documentée.</p>
         </section>}
         {page === 'Ingrédients' && <section className="panel wide-panel">
           <span className="eyebrow">MATIÈRES PREMIÈRES RÉGIONALES</span><h2>Bibliothèque documentée</h2>
@@ -320,9 +339,9 @@ export default function App() {
             {nutrients.filter(n => n.ingredient_id === detail.id).length ? <div className="table-wrap"><table><thead><tr><th>Paramètre</th><th>Valeur</th><th>Base</th><th>Source</th><th>Statut</th></tr></thead><tbody>{nutrients.filter(n => n.ingredient_id === detail.id).map(n => <tr key={n.id}><td>{n.nutrient_name}</td><td>{n.value} {n.unit}</td><td>{n.basis === 'dry_matter' ? 'MS' : n.basis === 'as_fed' ? 'Produit brut' : 'Non précisée'}</td><td>{n.source_title}{n.source_year ? ' (' + n.source_year + ')' : ''}{n.source_cell ? ' · cellule ' + n.source_cell : ''}</td><td>{n.verified ? 'Vérifiée' : 'À vérifier'}</td></tr>)}</tbody></table></div> : <p className="muted">Aucune analyse nutritionnelle vérifiée n’est encore enregistrée pour cet ingrédient.</p>}
           </div>}
         </section>}
-        {page === 'Références' && <section className="panel wide-panel"><span className="eyebrow">BASE SCIENTIFIQUE CAMEROUNAISE</span><h2>Références et bibliographie</h2><p className="muted">Les études locales sont classées selon leur type de preuve. Un essai expérimental ou une enquête de terrain n’est pas automatiquement une norme nutritionnelle ni une limite d’incorporation.</p><div className="saved-list">{references.map(ref => <article className="detail-card" key={ref.id}><div className="section-head compact"><div><strong>{ref.title}</strong><small>{ref.authors || 'Auteurs non renseignés'} · {ref.publication_year || 'Année non renseignée'}</small></div><span className="offline">{ref.geography}</span></div><p><strong>Publication :</strong> {ref.publication || 'Non renseignée'}</p><p><strong>Espèces :</strong> {(ref.species || []).join(', ') || 'Non précisées'}</p><p><strong>Type de preuve :</strong> {ref.source_kind === 'controlled_trial' ? 'Essai expérimental' : ref.source_kind === 'field_survey' ? 'Enquête de terrain' : ref.source_kind}</p><p><strong>Portée :</strong> {ref.evidence_scope}</p><p><strong>Résultats utiles :</strong> {ref.key_findings}</p><p><strong>Limites d’interprétation :</strong> {ref.limitations}</p>{ref.doi && <p><strong>DOI :</strong> {ref.doi}</p>}{ref.source_url && <a href={ref.source_url} target="_blank" rel="noreferrer">Consulter la publication →</a>}</article>)}{references.length === 0 && <p className="muted">Aucune référence disponible hors connexion ou dans la base actuelle.</p>}</div></section>}
+        {page === 'Références' && <section className="panel wide-panel"><span className="eyebrow">BASE SCIENTIFIQUE CAMEROUNAISE</span><h2>Références et bibliographie</h2><p className="muted">Les études locales sont classées selon leur type de preuve. Un essai expérimental ou une enquête de terrain n’est pas automatiquement une norme nutritionnelle ni une limite d’incorporation.</p><div className="saved-list">{references.map(ref => <article className="detail-card" key={ref.id}><div className="section-head compact"><div><strong>{ref.title}</strong><small>{ref.authors || 'Auteurs non renseignés'} · {ref.publication_year || 'Année non renseignée'}</small></div><span className="offline">{ref.geography}</span></div><p><strong>Publication :</strong> {ref.publication || 'Non renseignée'}</p><p><strong>Espèces :</strong> {(ref.species || []).join(', ') || 'Non précisées'}</p><p><strong>Type de preuve :</strong> {({ official_guide: 'Guide officiel de souche', draft_standard: 'Projet de norme (non adopté)', scientific_standard: 'Référence scientifique', controlled_trial: 'Essai expérimental', field_survey: 'Enquête de terrain' }[ref.source_kind] || ref.source_kind)}</p><p><strong>Statut documentaire :</strong> {ref.source_status === 'draft' ? 'Projet non adopté — ne pas utiliser comme norme' : ref.source_status === 'source_checked' ? 'Source consultée et référencée' : 'À examiner'}</p><p><strong>Portée :</strong> {ref.evidence_scope}</p><p><strong>Résultats utiles :</strong> {ref.key_findings}</p><p><strong>Limites d’interprétation :</strong> {ref.limitations}</p>{ref.doi && <p><strong>DOI :</strong> {ref.doi}</p>}{ref.source_url && <a href={ref.source_url} target="_blank" rel="noreferrer">Consulter la publication →</a>}</article>)}{references.length === 0 && <p className="muted">Aucune référence disponible hors connexion ou dans la base actuelle.</p>}</div></section>}
         {page === 'Mes formules' && <section className="panel wide-panel"><span className="eyebrow">VOTRE HISTORIQUE</span><h2>Mes formules</h2><p className="muted">Vos formules cloud et brouillons enregistrés sur cet appareil.</p>
-          {formulas.length === 0 && pendingCount === 0 ? <p className="muted">Aucune formule enregistrée pour le moment.</p> : <div className="saved-list">{formulas.map(formula => <div className="saved-card" key={formula.id}><div><strong>{formula.title}</strong><small>{species.find(s => s.id === formula.species)?.name || formula.species} · {formula.stage} · {formula.batch_kg} kg</small><small>{formula.local ? 'Sur cet appareil, en attente de synchronisation' : formula.solver_status === 'optimal' ? 'Optimisée' : 'Brouillon / données à vérifier'}</small></div><div><strong>{formula.total_cost ? money(formula.total_cost) : 'Coût non calculé'}</strong><button onClick={() => openFormula(formula)}>Ouvrir</button></div></div>)}</div>}
+          {formulas.length === 0 && pendingCount === 0 ? <p className="muted">Aucune formule enregistrée pour le moment.</p> : <div className="saved-list">{formulas.map(formula => <div className="saved-card" key={formula.id}><div><strong>{formula.title}</strong><small>{species.find(s => s.id === formula.species)?.name || formula.species} · {formula.genotype || 'Génétique non précisée'} · {formula.stage} · {formula.batch_kg} kg</small><small>{formula.local ? 'Sur cet appareil, en attente de synchronisation' : formula.solver_status === 'optimal' ? 'Optimisée' : 'Brouillon / données à vérifier'}</small></div><div><strong>{formula.total_cost ? money(formula.total_cost) : 'Coût non calculé'}</strong><button onClick={() => openFormula(formula)}>Ouvrir</button></div></div>)}</div>}
           {pendingCount > 0 && <button className="secondary-button" onClick={() => session?.user && syncQueue(session.user)}>Synchroniser {pendingCount} brouillon(s)</button>}
         </section>}
       </main>
