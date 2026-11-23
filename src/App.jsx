@@ -8,7 +8,7 @@ const species = [
   { id: 'layers', name: 'Poules pondeuses commerciales', genotypes: ['Hy-Line Brown', 'ISA Brown', 'Lohmann Brown', 'Bovans Brown', 'Autre souche commerciale'], stages: ['Ponte pic', 'Ponte 2', 'Ponte 3', 'Ponte 4', 'Ponte 5'], icon: '🥚' },
   { id: 'local_barred_layer', name: 'Poules locales barrées', genotypes: ['Poule barrée locale camerounaise'], stages: ['Ponte (19–65 semaines) – Hautes Terres de l’Ouest'], icon: '🐓' },
   { id: 'local_chicken', name: 'Poulets locaux (chair)', genotypes: ['Poulet local non amélioré', 'Poulet local sélectionné / croisé'], stages: ['Démarrage', 'Croissance', 'Finition'], icon: '🐓' },
-  { id: 'pigs', name: 'Porcs', genotypes: ['Race locale camerounaise', 'Croisé amélioré (Large White × Landrace)', 'DanBred'], stages: ['6–9 kg', '9–15 kg', '15–30 kg', '30–60 kg', '60–110 kg', 'Cochette', 'Truie gestante', 'Truie allaitante'], icon: '🐖' },
+  { id: 'pigs', name: 'Porcs', genotypes: ['Race locale camerounaise', 'Croisé amélioré (Large White × Landrace)', 'DanBred'], stages: ['6–9 kg', '9–15 kg', '15–30 kg', '30–60 kg', '60–115 kg', '75–115 kg', 'Cochette', 'Truie gestante', 'Truie allaitante'], icon: '🐖' },
   { id: 'rabbits', name: 'Lapins', genotypes: ['Néo-Zélandais blanc', 'Californien', 'Croisé', 'Population locale'], stages: ['Croissance/engraissement', 'Entretien', 'Gestation', 'Lactation'], icon: '🐇' }
 ];
 const OFFLINE_KEY = 'feedform_offline_queue_v1';
