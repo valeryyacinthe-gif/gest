@@ -10,7 +10,9 @@ const species = [
   { id: 'rabbits', name: 'Lapins', stages: ['Sevrage', 'Croissance', 'Reproduction'], icon: '🐇' },
   { id: 'fish', name: 'Poissons', stages: ['Alevinage', 'Croissance', 'Finition'], icon: '🐟' }
 ];
-const OFFLINE_KEY = 'feedform_offline_queue_v1';\nconst CATALOG_KEY = 'feedform_catalog_cache_v1';\nconst readCatalog = () => { try { return JSON.parse(localStorage.getItem(CATALOG_KEY) || 'null'); } catch { return null; } };
+const OFFLINE_KEY = 'feedform_offline_queue_v1';
+const CATALOG_KEY = 'feedform_catalog_cache_v1';
+const readCatalog = () => { try { return JSON.parse(localStorage.getItem(CATALOG_KEY) || 'null'); } catch { return null; } };
 const money = value => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(Number(value || 0)) + ' FCFA';
 const readQueue = () => { try { return JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]'); } catch { return []; } };
 
