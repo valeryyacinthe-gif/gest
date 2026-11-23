@@ -175,9 +175,9 @@ export default function App() {
     else { setPrices(v => ({ ...v, [ingredientId]: amount })); setNotice('Prix enregistré.'); }
   }
 
-  function runOptimizer() {
+  async function runOptimizer() {
     const verifiedRequirements = requirements.filter(r => r.species === animal && r.stage === stage && r.verified);
-    const output = optimizeLeastCost({ ingredients: selectedIngredients, requirements: verifiedRequirements, batchKg: Number(batchKg) });
+    const output = await optimizeLeastCost({ ingredients: selectedIngredients, requirements: verifiedRequirements, batchKg: Number(batchKg) });
     setResult(output);
     if (output.feasible) setNotice('Solution mathématique trouvée. Vérifiez les lots et les consignes du nutritionniste avant fabrication.');
     else setNotice('Optimisation bloquée : les données ou contraintes vérifiées sont encore incomplètes.');
