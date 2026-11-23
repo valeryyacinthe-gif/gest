@@ -5,7 +5,8 @@ import './style.css';
 
 const species = [
   { id: 'broiler', name: 'Poulets de chair', stages: ['Démarrage', 'Croissance', 'Finition'], icon: '🐔' },
-  { id: 'layers', name: 'Poules pondeuses', stages: ['Poulettes', 'Pré-ponte', 'Ponte'], icon: '🥚' },
+  { id: 'layers', name: 'Poules pondeuses commerciales', stages: ['Poulettes', 'Pré-ponte', 'Ponte'], icon: '🥚' },
+  { id: 'local_barred_layer', name: 'Poules locales barrées', stages: ['Ponte (19–65 semaines) – Hautes Terres de l’Ouest'], icon: '🐓' },
   { id: 'pigs', name: 'Porcs', stages: ['Porcelet', 'Croissance', 'Finition', 'Truie'], icon: '🐖' },
   { id: 'rabbits', name: 'Lapins', stages: ['Sevrage', 'Croissance', 'Reproduction'], icon: '🐇' },
   { id: 'fish', name: 'Poissons', stages: ['Alevinage', 'Croissance', 'Finition'], icon: '🐟' }
@@ -29,6 +30,7 @@ export default function App() {
   const [ingredients, setIngredients] = useState([]);
   const [nutrients, setNutrients] = useState([]);
   const [requirements, setRequirements] = useState([]);
+  const [references, setReferences] = useState([]);
   const [limits, setLimits] = useState([]);
   const [prices, setPrices] = useState({});
   const [formulas, setFormulas] = useState([]);
@@ -62,30 +64,32 @@ export default function App() {
 
   const loadWorkspace = useCallback(async currentUser => {
     if (!supabase || !currentUser) return;
-    const [iRes, nRes, rRes, lRes, pRes, fRes] = await Promise.all([
+    const [iRes, nRes, rRes, lRes, pRes, fRes, refRes] = await Promise.all([
       supabase.from('ingredients').select('*').eq('is_published', true).order('name'),
       supabase.from('ingredient_nutrients').select('*'),
       supabase.from('species_requirements').select('*'),
       supabase.from('ingredient_inclusion_limits').select('*').eq('verified', true),
       supabase.from('ingredient_prices').select('*').eq('user_id', currentUser.id).order('observed_on', { ascending: false }),
-      supabase.from('formulas').select('*').eq('user_id', currentUser.id).order('updated_at', { ascending: false })
+      supabase.from('formulas').select('*').eq('user_id', currentUser.id).order('updated_at', { ascending: false }),
+      supabase.from('nutrition_references').select('*').order('publication_year', { ascending: false })
     ]);
-    const firstError = [iRes, nRes, rRes, lRes, pRes, fRes].find(x => x.error);
+    const firstError = [iRes, nRes, rRes, lRes, pRes, fRes, refRes].find(x => x.error);
     if (firstError) {
       const cached = readCatalog();
       if (cached) {
         setIngredients(cached.ingredients || []); setNutrients(cached.nutrients || []);
-        setRequirements(cached.requirements || []); setLimits(cached.limits || []);
+        setRequirements(cached.requirements || []); setLimits(cached.limits || []); setReferences(cached.references || []);
         setNotice('Mode hors connexion : bibliothèque locale chargée. Les données seront actualisées au retour du réseau.');
       } else setNotice('Certaines données n’ont pas pu être synchronisées : ' + firstError.error.message);
       return;
     }
-    const catalogSnapshot = { ingredients: iRes.data || [], nutrients: nRes.data || [], requirements: rRes.data || [], limits: lRes.data || [] };
+    const catalogSnapshot = { ingredients: iRes.data || [], nutrients: nRes.data || [], requirements: rRes.data || [], limits: lRes.data || [], references: refRes.data || [] };
     localStorage.setItem(CATALOG_KEY, JSON.stringify(catalogSnapshot));
     setIngredients(catalogSnapshot.ingredients);
     setNutrients(catalogSnapshot.nutrients);
     setRequirements(catalogSnapshot.requirements);
     setLimits(catalogSnapshot.limits);
+    setReferences(catalogSnapshot.references);
     const priceMap = {};
     (pRes.data || []).forEach(p => { if (!(p.ingredient_id in priceMap)) priceMap[p.ingredient_id] = p.price_per_kg; });
     setPrices(priceMap);
@@ -139,7 +143,7 @@ export default function App() {
       if (nextSession?.user) {
         window.setTimeout(() => { loadWorkspace(nextSession.user); syncQueue(nextSession.user); }, 0);
       } else {
-        setIngredients([]); setNutrients([]); setRequirements([]); setLimits([]); setPrices({}); setFormulas([]);
+        setIngredients([]); setNutrients([]); setRequirements([]); setLimits([]); setReferences([]); setPrices({}); setFormulas([]);
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -258,13 +262,14 @@ export default function App() {
       <p className="tiny-note">Vous pouvez préparer un brouillon hors connexion. La synchronisation cloud nécessite un compte.</p>
     </section> : <>
       <div className="account-bar"><span>Connecté : <strong>{session.user.email}</strong></span><span className="sync-state">{navigator.onLine ? '● En ligne' : '○ Hors ligne'} · {pendingCount} en attente</span><button onClick={() => supabase.auth.signOut()}>Déconnexion</button></div>
-      <nav className="nav">{['Accueil','Formuler','Ingrédients','Mes formules'].map(n => <button key={n} className={page === n ? 'active' : ''} onClick={() => setPage(n)}>{n}</button>)}</nav>
+      <nav className="nav">{['Accueil','Formuler','Ingrédients','Références','Mes formules'].map(n => <button key={n} className={page === n ? 'active' : ''} onClick={() => setPage(n)}>{n}</button>)}</nav>
       <main>
         {page === 'Accueil' && <>
           <section className="section-head"><div><span className="eyebrow">VOTRE ESPACE DE TRAVAIL</span><h2>Que souhaitez-vous faire ?</h2></div><span className="offline"><i/> {navigator.onLine ? 'Synchronisation disponible' : 'Mode hors connexion'}</span></section>
           <div className="action-grid">
             <button className="action-card primary" onClick={() => setPage('Formuler')}><span className="action-icon">＋</span><strong>Nouvelle formulation</strong><small>Construire une ration selon l’espèce et le stade</small><b>Commencer →</b></button>
             <button className="action-card" onClick={() => setPage('Ingrédients')}><span className="action-icon">▤</span><strong>Bibliothèque d’ingrédients</strong><small>Fiches, sources, précautions et composition</small><b>Explorer →</b></button>
+            <button className="action-card" onClick={() => setPage('Références')}><span className="action-icon">📚</span><strong>Bibliothèque scientifique</strong><small>Études camerounaises et références nutritionnelles</small><b>Consulter →</b></button>
           </div>
           <section className="notice"><span>ⓘ</span><div><strong>Moteur prudent et documenté</strong><p>Le calcul au moindre coût n’utilise que des compositions et besoins nutritionnels marqués comme vérifiés, avec unités et bases compatibles. Les données non validées restent visibles mais ne sont pas utilisées dans l’optimisation.</p></div></section>
           <section className="section-head"><div><span className="eyebrow">ESPÈCES PRÉVUES</span><h2>Choisissez votre production</h2></div></section>
@@ -315,6 +320,7 @@ export default function App() {
             {nutrients.filter(n => n.ingredient_id === detail.id).length ? <div className="table-wrap"><table><thead><tr><th>Paramètre</th><th>Valeur</th><th>Base</th><th>Source</th><th>Statut</th></tr></thead><tbody>{nutrients.filter(n => n.ingredient_id === detail.id).map(n => <tr key={n.id}><td>{n.nutrient_name}</td><td>{n.value} {n.unit}</td><td>{n.basis === 'dry_matter' ? 'MS' : n.basis === 'as_fed' ? 'Produit brut' : 'Non précisée'}</td><td>{n.source_title}{n.source_year ? ' (' + n.source_year + ')' : ''}{n.source_cell ? ' · cellule ' + n.source_cell : ''}</td><td>{n.verified ? 'Vérifiée' : 'À vérifier'}</td></tr>)}</tbody></table></div> : <p className="muted">Aucune analyse nutritionnelle vérifiée n’est encore enregistrée pour cet ingrédient.</p>}
           </div>}
         </section>}
+        {page === 'Références' && <section className="panel wide-panel"><span className="eyebrow">BASE SCIENTIFIQUE CAMEROUNAISE</span><h2>Références et bibliographie</h2><p className="muted">Les études locales sont classées selon leur type de preuve. Un essai expérimental ou une enquête de terrain n’est pas automatiquement une norme nutritionnelle ni une limite d’incorporation.</p><div className="saved-list">{references.map(ref => <article className="detail-card" key={ref.id}><div className="section-head compact"><div><strong>{ref.title}</strong><small>{ref.authors || 'Auteurs non renseignés'} · {ref.publication_year || 'Année non renseignée'}</small></div><span className="offline">{ref.geography}</span></div><p><strong>Publication :</strong> {ref.publication || 'Non renseignée'}</p><p><strong>Espèces :</strong> {(ref.species || []).join(', ') || 'Non précisées'}</p><p><strong>Type de preuve :</strong> {ref.source_kind === 'controlled_trial' ? 'Essai expérimental' : ref.source_kind === 'field_survey' ? 'Enquête de terrain' : ref.source_kind}</p><p><strong>Portée :</strong> {ref.evidence_scope}</p><p><strong>Résultats utiles :</strong> {ref.key_findings}</p><p><strong>Limites d’interprétation :</strong> {ref.limitations}</p>{ref.doi && <p><strong>DOI :</strong> {ref.doi}</p>}{ref.source_url && <a href={ref.source_url} target="_blank" rel="noreferrer">Consulter la publication →</a>}</article>)}{references.length === 0 && <p className="muted">Aucune référence disponible hors connexion ou dans la base actuelle.</p>}</div></section>}
         {page === 'Mes formules' && <section className="panel wide-panel"><span className="eyebrow">VOTRE HISTORIQUE</span><h2>Mes formules</h2><p className="muted">Vos formules cloud et brouillons enregistrés sur cet appareil.</p>
           {formulas.length === 0 && pendingCount === 0 ? <p className="muted">Aucune formule enregistrée pour le moment.</p> : <div className="saved-list">{formulas.map(formula => <div className="saved-card" key={formula.id}><div><strong>{formula.title}</strong><small>{species.find(s => s.id === formula.species)?.name || formula.species} · {formula.stage} · {formula.batch_kg} kg</small><small>{formula.local ? 'Sur cet appareil, en attente de synchronisation' : formula.solver_status === 'optimal' ? 'Optimisée' : 'Brouillon / données à vérifier'}</small></div><div><strong>{formula.total_cost ? money(formula.total_cost) : 'Coût non calculé'}</strong><button onClick={() => openFormula(formula)}>Ouvrir</button></div></div>)}</div>}
           {pendingCount > 0 && <button className="secondary-button" onClick={() => session?.user && syncQueue(session.user)}>Synchroniser {pendingCount} brouillon(s)</button>}
