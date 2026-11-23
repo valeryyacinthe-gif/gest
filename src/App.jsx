@@ -310,6 +310,7 @@ export default function App() {
               {checked && <div className="picker-fields">
                 <label>Prix/kg (FCFA)<input type="number" min="0" value={priceDraft[item.id] ?? prices[item.id] ?? ''} onChange={e => setPriceDraft(v => ({ ...v, [item.id]: e.target.value }))} onBlur={e => savePrice(item.id, e.target.value)} placeholder="Prix local"/></label>
                 {mode === 'expert' && <label>Maximum (%)<input type="number" min="0" max="100" value={capDraft[item.id] ?? limit?.max_percent ?? ''} onChange={e => setCapDraft(v => ({ ...v, [item.id]: e.target.value }))} placeholder={limit ? 'Limite source' : 'Sans validation'}/></label>}
+                {limit && <small className="muted">Plafond documenté : {limit.max_percent}% · {limit.source_title}</small>}
                 {item.safety_limit_required && !limit && <small className="warning-text">Limite de sécurité non documentée pour ce stade</small>}
               </div>}
             </div>;
