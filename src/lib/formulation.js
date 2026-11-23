@@ -30,8 +30,8 @@ export async function optimizeLeastCost({ ingredients, requirements, batchKg = 1
   const constraints = { batch: { equal: 100 } };
   for (const req of requirements) {
     const c = {};
-    if (req.min_value !== null && req.min_value !== undefined) c.min = Number(req.min_value);
-    if (req.max_value !== null && req.max_value !== undefined) c.max = Number(req.max_value);
+    if (req.min_value !== null && req.min_value !== undefined) c.min = Number(req.min_value) * 100;
+    if (req.max_value !== null && req.max_value !== undefined) c.max = Number(req.max_value) * 100;
     constraints[`nutrient_${req.nutrient_code}`] = c;
   }
   ingredients.forEach((item, index) => {
