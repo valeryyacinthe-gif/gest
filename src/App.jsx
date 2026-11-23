@@ -71,11 +71,21 @@ export default function App() {
       supabase.from('formulas').select('*').eq('user_id', currentUser.id).order('updated_at', { ascending: false })
     ]);
     const firstError = [iRes, nRes, rRes, lRes, pRes, fRes].find(x => x.error);
-    if (firstError) { setNotice('Certaines données n’ont pas pu être synchronisées : ' + firstError.error.message); return; }
-    setIngredients(iRes.data || []);
-    setNutrients(nRes.data || []);
-    setRequirements(rRes.data || []);
-    setLimits(lRes.data || []);
+    if (firstError) {
+      const cached = readCatalog();
+      if (cached) {
+        setIngredients(cached.ingredients || []); setNutrients(cached.nutrients || []);
+        setRequirements(cached.requirements || []); setLimits(cached.limits || []);
+        setNotice('Mode hors connexion : bibliothèque locale chargée. Les données seront actualisées au retour du réseau.');
+      } else setNotice('Certaines données n’ont pas pu être synchronisées : ' + firstError.error.message);
+      return;
+    }
+    const catalogSnapshot = { ingredients: iRes.data || [], nutrients: nRes.data || [], requirements: rRes.data || [], limits: lRes.data || [] };
+    localStorage.setItem(CATALOG_KEY, JSON.stringify(catalogSnapshot));
+    setIngredients(catalogSnapshot.ingredients);
+    setNutrients(catalogSnapshot.nutrients);
+    setRequirements(catalogSnapshot.requirements);
+    setLimits(catalogSnapshot.limits);
     const priceMap = {};
     (pRes.data || []).forEach(p => { if (!(p.ingredient_id in priceMap)) priceMap[p.ingredient_id] = p.price_per_kg; });
     setPrices(priceMap);
