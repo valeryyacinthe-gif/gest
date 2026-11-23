@@ -57,11 +57,10 @@ export function validateFormulationInputs({ ingredients, requirements }) {
       errors.push(`Limites d’incorporation incohérentes pour ${item.name}.`);
     }
     for (const req of requirements || []) {
-      const profile = (item.nutrients || []).find(n => n.nutrient_code === req.nutrient_code && n.verified === true);
-      if (!profile) errors.push(`Donnée vérifiée absente : ${req.nutrient_name} pour ${item.name}.`);
-      else if (profile.basis !== req.basis || profile.unit !== req.unit) {
-        errors.push(`Unité/base incompatible pour ${req.nutrient_name} dans ${item.name} (${profile.unit}, ${profile.basis} ≠ ${req.unit}, ${req.basis}).`);
-      }
+      const candidates = (item.nutrients || []).filter(n => n.nutrient_code === req.nutrient_code && n.verified === true);
+      const profile = candidates.find(n => n.basis === req.basis && n.unit === req.unit);
+      if (!profile && !candidates.length) errors.push(`Donnée vérifiée absente : ${req.nutrient_name} pour ${item.name}.`);
+      else if (!profile) errors.push(`Unité/base incompatible pour ${req.nutrient_name} dans ${item.name}; attendu ${req.unit}, ${req.basis}.`);
     }
   }
   return [...new Set(errors)];
@@ -105,7 +104,7 @@ export async function optimizeLeastCost({ ingredients, requirements, batchKg = 1
       [`max_${index}`]: 1
     };
     for (const req of modelRequirements) {
-      const nutrient = item.nutrients.find(n => n.nutrient_code === req.nutrient_code && n.verified === true);
+      const nutrient = item.nutrients.find(n => n.nutrient_code === req.nutrient_code && n.verified === true && n.unit === req.unit && n.basis === req.basis);
       variable[`nutrient_${req.nutrient_code}`] = Number(nutrient.value);
     }
     variables[`ingredient_${index}`] = variable;
