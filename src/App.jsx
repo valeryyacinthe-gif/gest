@@ -54,7 +54,7 @@ export default function App() {
       ...item,
       price_per_kg: Number(priceDraft[id] ?? prices[id] ?? 0),
       min_inclusion: Number(limit?.min_percent ?? 0),
-      max_inclusion: Number(capDraft[id] ?? limit?.max_percent ?? 100),
+      max_inclusion: limit ? Math.min(Number(capDraft[id] ?? limit.max_percent), Number(limit.max_percent)) : Number(capDraft[id] ?? 100),
       max_inclusion_verified: Boolean(limit),
       nutrients: nutrients.filter(n => n.ingredient_id === id),
     };
